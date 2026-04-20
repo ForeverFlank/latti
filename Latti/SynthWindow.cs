@@ -18,7 +18,7 @@ public class SynthWindow : GameWindow
     readonly Synth Synth;
     float gain = 0.5f;
 
-    const int BufferSize = 2048;
+    const int BufferSize = 1024;
     const int BufferCount = 4;
     const int SampleRate = 48000;
 
@@ -54,7 +54,7 @@ public class SynthWindow : GameWindow
     {
         base.OnUpdateFrame(args);
 
-        // if (!playing) return;
+        if (!playing) return;
 
         AL.GetSource(_source, ALGetSourcei.BuffersProcessed, out int processed);
 
@@ -69,7 +69,7 @@ public class SynthWindow : GameWindow
         }
 
         AL.GetSource(_source, ALGetSourcei.SourceState, out int state);
-        if (state != (int)ALSourceState.Playing)
+        if (state == (int)ALSourceState.Stopped)
         {
             AL.SourcePlay(_source);
         }
@@ -81,7 +81,8 @@ public class SynthWindow : GameWindow
 
         GL.Clear(ClearBufferMask.ColorBufferBit);
 
-        DrawGUI();
+        Synth.DrawGUI();
+        DrawControlGUI();
 
         ImGuiController.Render();
         ImGuiController.CheckGLError("End of frame");
@@ -89,10 +90,8 @@ public class SynthWindow : GameWindow
         SwapBuffers();
     }
 
-    void DrawGUI()
+    void DrawControlGUI()
     {
-        Synth.DrawGUI();
-
         ImGui.Begin("Control");
 
         ImGui.SliderFloat("Gain", ref gain, 0f, 1f);
@@ -102,6 +101,7 @@ public class SynthWindow : GameWindow
             if (ImGui.Button("Play"))
             {
                 PlayTone();
+                _time = 0;
                 playing = true;
             }
         }
@@ -126,8 +126,6 @@ public class SynthWindow : GameWindow
 
     void PlayTone()
     {
-        _time = 0;
-
         AL.SourceStop(_source);
 
         AL.GetSource(_source, ALGetSourcei.BuffersQueued, out int queued);
@@ -148,19 +146,44 @@ public class SynthWindow : GameWindow
 
     short[] GetSynthAudio()
     {
-        short[] data = new short[SampleRate];
+        // _time = 0;
+        short[] data = new short[BufferSize];
 
-        for (int i = 0; i < SampleRate; i++)
+        double dt = 1.0 / SampleRate;
+
+        for (int i = 0; i < BufferSize; i++)
         {
-            double dt = 1.0 / SampleRate;
+            float value = Synth.GenerateAudio(_time, dt);
 
-            float value = Synth.GenerateAudio((float)_time, (float)dt);
-            data[i] = (short)(value * gain * short.MaxValue);
+            data[i] = (short)(Math.Clamp(value * gain, -1f, 1f) * short.MaxValue);
 
             _time += dt;
         }
 
         return data;
+    }
+
+    protected override void OnFramebufferResize(FramebufferResizeEventArgs e)
+    {
+        base.OnFramebufferResize(e);
+
+        GL.Viewport(0, 0, e.Width, e.Height);
+
+        ImGuiController.WindowResized(e.Width, e.Height);
+    }
+
+    protected override void OnTextInput(TextInputEventArgs e)
+    {
+        base.OnTextInput(e);
+
+        ImGuiController.PressChar((char)e.Unicode);
+    }
+
+    protected override void OnMouseWheel(MouseWheelEventArgs e)
+    {
+        base.OnMouseWheel(e);
+
+        ImGuiController.MouseScroll(e.Offset);
     }
 
     protected override void OnUnload()
