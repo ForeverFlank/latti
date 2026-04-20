@@ -14,7 +14,6 @@ public class SawOscillator
         _phase += frequency * dt;
         _phase %= 1;
         double value = 2f * (_phase - Math.Floor(0.5f + _phase));
-        // double value = Math.Sin(Math.Tau * _phase);
 
         return (float)value * gain;
     }
