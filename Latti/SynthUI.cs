@@ -14,6 +14,8 @@ public class SynthUI
 
     SelectedNote? _pendingSelectedNote;
     SelectedNote? _selectedNote;
+    SelectedNote? _dragTarget;
+    bool _dragging;
 
     Vector2 _pMin, _pMax, _canvasSize;
 
@@ -61,10 +63,12 @@ public class SynthUI
 
         ImGui.PushClipRect(_pMin, _pMax, true);
         foreach (Note note in _synth.Notes)
+        {
             DrawNote(note, dl);
+        }
         ImGui.PopClipRect();
 
-        if (_pendingSelectedNote is not null)
+        if (!_dragging && _pendingSelectedNote is not null)
         {
             _selectedNote = _pendingSelectedNote;
             _pendingSelectedNote = null;
@@ -77,6 +81,8 @@ public class SynthUI
             // ...
             ImGui.EndPopup();
         }
+
+        HandleDragging();
     }
 
     void DrawNote(Note note, ImDrawListPtr dl)
@@ -91,7 +97,7 @@ public class SynthUI
                 float freq = note.GetFrequency(_synth.RootFrequency, time);
                 float y = MathF.Log2(freq);
 
-                return ToScreen((float)time, y);
+                return TimeToScreen((float)time, y);
             }).ToArray();
 
         dl.AddPolyline(ref points[0], points.Length, ImGui.GetColorU32(new Vector4(1f)), ImDrawFlags.None, 1.0f);
@@ -113,17 +119,62 @@ public class SynthUI
         );
 
         ImGui.SetCursorScreenPos(center - new Vector2(size, size));
-        if (ImGui.InvisibleButton($"ep_{which}_{note.GetHashCode()}", new Vector2(size * 2)))
+        ImGui.InvisibleButton($"ep_{which}_{note.GetHashCode()}", new Vector2(size * 2));
+
+        if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
         {
             _pendingSelectedNote = new(note, which);
+
+            _dragging = true;
+            _dragTarget = new(note, which);
         }
     }
 
+    void HandleDragging()
+    {
+        if (_dragging && _dragTarget != null)
+        {
+            if (!ImGui.IsMouseDown(ImGuiMouseButton.Left))
+            {
+                _dragging = false;
+                _dragTarget = null;
+                return;
+            }
 
-    Vector2 ToScreen(float t, float y) => new(
+            Vector2 mouse = ImGui.GetIO().MousePos;
+
+            double time = ScreenToTime(mouse.X);
+
+            double beat = time * _synth.Tempo.Bpm / 60.0;
+            double snappedBeat = SnapBeat(beat);
+
+            Note note = _dragTarget.Note;
+
+            if (_dragTarget.Type == SelectType.Start)
+            {
+                note.StartBeat = Math.Min(snappedBeat, note.EndBeat - 0.01);
+            }
+            else
+            {
+                note.EndBeat = Math.Max(snappedBeat, note.StartBeat + 0.01);
+            }
+        }
+    }
+
+    static double SnapBeat(double beat)
+    {
+        const double snap = 1 / 16f;
+        return Math.Round(beat / snap) * snap;
+    }
+
+
+    Vector2 TimeToScreen(float t, float y) => new(
         _pMin.X + (t - _viewX) * _zoomX * _canvasSize.X,
         _pMax.Y - (y - _viewY) * _zoomY * _canvasSize.Y
     );
+
+    float ScreenToTime(float x) =>
+        (x - _pMin.X) / (_zoomX * _canvasSize.X) + _viewX;
 
     bool IsOnScreen(Vector2 p) =>
         p.X >= _pMin.X && p.X <= _pMax.X &&
