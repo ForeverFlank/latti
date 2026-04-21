@@ -36,24 +36,25 @@ public class DAW : GameWindow
         Synth = new();
         SynthUI = new(Synth);
 
-        UpdateFrame += e => ImGuiController.Update(this, (float)e.Time);
-    }
-
-    protected override void OnLoad()
-    {
-        base.OnLoad();
 
         _context = ALC.CreateContext(ALC.OpenDevice(null), null as int[]);
         ALC.MakeContextCurrent(_context);
 
         _source = AL.GenSource();
         _buffers = AL.GenBuffers(BufferCount);
+    }
+
+    protected override void OnLoad()
+    {
+        base.OnLoad();
 
         ImGui.CreateContext();
     }
 
     protected override void OnUpdateFrame(FrameEventArgs args)
     {
+        ImGuiController.Update(this, (float)args.Time);
+
         base.OnUpdateFrame(args);
 
         if (!playing) return;

@@ -3,6 +3,7 @@ namespace Latti;
 public class Synth
 {
     public float RootFrequency = 256f;
+    public TempoMap Tempo = new(new(4f, 4f), 120f);
 
     public readonly List<Note> Notes = [];
 
@@ -20,7 +21,7 @@ public class Synth
     public float GenerateAudio(double t, double dt)
     {
         Note[] active = Notes
-            .Where(n => n.StartTime <= t && t < n.EndTime)
+            .Where(n => n.StartSeconds(Tempo) <= t && t < n.EndSeconds(Tempo))
             .Take(Polyphony)
             .ToArray();
 
@@ -31,7 +32,9 @@ public class Synth
             total += _oscillators[i].GenerateAudio(
                 note.GetFrequency(RootFrequency, t),
                 note.Velocity,
-                t, dt);
+                t,
+                dt
+            );
         }
 
         return total;

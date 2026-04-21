@@ -12,10 +12,10 @@ public class SynthUI
     float _viewX = 0.0f;
     float _viewY = 0.0f;
 
-    Note? _pendingPopupNote;
-    string _pendingPopupWhich = "";
-    Note? _selectedNote;
-    string _selectedWhich = "";
+    SelectedNote? _pendingSelectedNote;
+    SelectedNote? _selectedNote;
+
+    Vector2 _pMin, _pMax, _canvasSize;
 
     public SynthUI(Synth synth)
     {
@@ -31,21 +31,18 @@ public class SynthUI
         ImGui.Text("Zoom");
         ImGui.SliderFloat("Horizontal", ref _zoomX, .1f, 10f, "%.2f", ImGuiSliderFlags.Logarithmic);
         ImGui.SliderFloat("Vertical", ref _zoomY, .1f, 10f, "%.2f", ImGuiSliderFlags.Logarithmic);
-
         ImGui.SliderFloat("Pan X", ref _viewX, 0f, 1f);
         ImGui.SliderFloat("Pan Y", ref _viewY, 0f, 1f);
 
         if (ImGui.Button("+ Add note"))
-        {
             _synth.Notes.Add(new Note
             {
-                StartTime = 0,
-                EndTime = 1,
+                StartBeat = 0,
+                EndBeat = 1,
                 StartIntervals = [new Rational(1, 1)],
                 EndIntervals = [new Rational(1, 1)],
                 Velocity = 0.75f
             });
-        }
 
         DrawNoteEditor();
 
@@ -56,105 +53,93 @@ public class SynthUI
     {
         ImDrawListPtr dl = ImGui.GetWindowDrawList();
 
-        Vector2 canvasPos = ImGui.GetCursorScreenPos();
-        float canvasWidth = ImGui.GetWindowWidth() - 16f;
-        float canvasHeight = 300f;
-        Vector2 canvasSize = new(canvasWidth, canvasHeight);
+        _canvasSize = new(ImGui.GetWindowWidth() - 16f, 300f);
+        _pMin = ImGui.GetCursorScreenPos();
+        _pMax = _pMin + _canvasSize;
 
-        // ImGui.InvisibleButton("curve_canvas", canvasSize);
-        // if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
-        // {
-        //     _selectedNote = null;
-        //     _selectedWhich = "";
-        // }
+        dl.AddRect(_pMin, _pMax, ImGui.GetColorU32(new Vector4(0.3f, 0.3f, 0.3f, 1f)));
 
-        Vector2 pMin = canvasPos;
-        Vector2 pMax = canvasPos + canvasSize;
-
-        uint borderColor = ImGui.GetColorU32(new Vector4(0.3f, 0.3f, 0.3f, 1f));
-        dl.AddRect(pMin, pMax, borderColor);
-
-        ImGui.PushClipRect(pMin, pMax, true);
+        ImGui.PushClipRect(_pMin, _pMax, true);
         foreach (Note note in _synth.Notes)
-        {
-            DrawNote(note, dl, pMin, pMax, canvasSize);
-        }
+            DrawNote(note, dl);
         ImGui.PopClipRect();
 
-        if (_pendingPopupNote is not null)
+        if (_pendingSelectedNote is not null)
         {
-            _selectedNote = _pendingPopupNote;
-            _selectedWhich = _pendingPopupWhich;
-            _pendingPopupNote = null;
-            _pendingPopupWhich = "";
+            _selectedNote = _pendingSelectedNote;
+            _pendingSelectedNote = null;
             ImGui.OpenPopup("NotePopup");
         }
 
-        if (ImGui.BeginPopup("NotePopup"))
+        if (ImGui.BeginPopup("NotePopup") && _selectedNote is not null)
         {
-            if (_selectedNote is not null)
-            {
-                Note note = _selectedNote;
-
-                ImGui.Text($"Editing {_selectedWhich} endpoint");
-
-                ImGui.InputDouble("Start Time", ref note.StartTime);
-                ImGui.InputDouble("End Time", ref note.EndTime);
-                ImGui.InputFloat("Velocity", ref note.Velocity);
-            }
-
+            ImGui.Text($"Editing {_selectedNote.Type} endpoint");
+            // ...
             ImGui.EndPopup();
         }
     }
 
-    void DrawNote(Note note, ImDrawListPtr dl, Vector2 pMin, Vector2 pMax, Vector2 canvasSize)
+    void DrawNote(Note note, ImDrawListPtr dl)
     {
-        const int Segments = 64;
-        Vector2[] points = new Vector2[Segments];
+        const int segments = 64;
 
-        for (int i = 0; i < Segments; i++)
-        {
-            double t = note.StartTime + (note.EndTime - note.StartTime) * (i / (double)(Segments - 1));
+        Vector2[] points = Enumerable.Range(0, segments).Select(i =>
+            {
+                double t = i / (segments - 1.0);
 
-            float freq = note.GetFrequency(_synth.RootFrequency, t);
-            float y = Math.Clamp(MathF.Log2(freq), 0f, 1f);
+                double time = note.StartSeconds(_synth.Tempo) + t * note.DurationSeconds(_synth.Tempo);
+                float freq = note.GetFrequency(_synth.RootFrequency, time);
+                float y = MathF.Log2(freq);
 
-            float xScreen = pMin.X + ((float)t - _viewX) * _zoomX * canvasSize.X;
-            float yScreen = pMax.Y - (y - _viewY) * _zoomY * canvasSize.Y;
+                return ToScreen((float)time, y);
+            }).ToArray();
 
-            points[i] = new Vector2(xScreen, yScreen);
-        }
+        dl.AddPolyline(ref points[0], points.Length, ImGui.GetColorU32(new Vector4(1f)), ImDrawFlags.None, 1.0f);
 
-        uint curveColor = ImGui.GetColorU32(new Vector4(1f));
-        dl.AddPolyline(ref points[0], points.Length, curveColor, ImDrawFlags.None, 1.0f);
-
-        if (IsOnScreen(points[0], pMin, pMax)) DrawEndpoint(note, "start", points[0], dl);
-        if (IsOnScreen(points[^1], pMin, pMax)) DrawEndpoint(note, "end", points[^1], dl);
+        if (IsOnScreen(points[0])) DrawEndpoint(note, SelectType.Start, points[0], dl);
+        if (IsOnScreen(points[^1])) DrawEndpoint(note, SelectType.End, points[^1], dl);
     }
 
-    static bool IsOnScreen(Vector2 p, Vector2 min, Vector2 max) =>
-        p.X >= min.X && p.X <= max.X &&
-        p.Y >= min.Y && p.Y <= max.Y;
-
-    void DrawEndpoint(Note note, string which, Vector2 center, ImDrawListPtr dl)
+    void DrawEndpoint(Note note, SelectType which, Vector2 center, ImDrawListPtr dl)
     {
-        const float Size = 10f;
+        const float size = 10f;
 
         dl.AddQuad(
-            new Vector2(center.X, center.Y - Size),
-            new Vector2(center.X + Size, center.Y),
-            new Vector2(center.X, center.Y + Size),
-            new Vector2(center.X - Size, center.Y),
+            new Vector2(center.X, center.Y - size),
+            new Vector2(center.X + size, center.Y),
+            new Vector2(center.X, center.Y + size),
+            new Vector2(center.X - size, center.Y),
             ImGui.GetColorU32(new Vector4(1f))
         );
 
-        ImGui.SetCursorScreenPos(center - new Vector2(Size, Size));
-        bool clicked = ImGui.InvisibleButton($"ep_{which}_{note.GetHashCode()}", new Vector2(Size * 2, Size * 2));
-
-        if (clicked)
+        ImGui.SetCursorScreenPos(center - new Vector2(size, size));
+        if (ImGui.InvisibleButton($"ep_{which}_{note.GetHashCode()}", new Vector2(size * 2)))
         {
-            _pendingPopupNote = note;
-            _pendingPopupWhich = which;
+            _pendingSelectedNote = new(note, which);
         }
     }
+
+
+    Vector2 ToScreen(float t, float y) => new(
+        _pMin.X + (t - _viewX) * _zoomX * _canvasSize.X,
+        _pMax.Y - (y - _viewY) * _zoomY * _canvasSize.Y
+    );
+
+    bool IsOnScreen(Vector2 p) =>
+        p.X >= _pMin.X && p.X <= _pMax.X &&
+        p.Y >= _pMin.Y && p.Y <= _pMax.Y;
+
+    class SelectedNote
+    {
+        public Note Note;
+        public SelectType Type;
+
+        public SelectedNote(Note note, SelectType type)
+        {
+            Note = note;
+            Type = type;
+        }
+    }
+
+    enum SelectType { Start, End }
 }
