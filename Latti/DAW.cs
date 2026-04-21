@@ -6,7 +6,7 @@ using ImGuiNET;
 
 namespace Latti;
 
-public class SynthWindow : GameWindow
+public class DAW : GameWindow
 {
     readonly ImGuiController ImGuiController;
     ALContext _context;
@@ -22,7 +22,7 @@ public class SynthWindow : GameWindow
     const int BufferCount = 4;
     const int SampleRate = 48000;
 
-    public SynthWindow(int width, int height) : base(GameWindowSettings.Default, new NativeWindowSettings()
+    public DAW(int width, int height) : base(GameWindowSettings.Default, new NativeWindowSettings()
     {
         ClientSize = (width, height),
         Title = "Latti"

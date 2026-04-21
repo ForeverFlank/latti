@@ -4,7 +4,7 @@ public class Program
 {
     public static void Main()
     {
-        using SynthWindow synth = new(1280, 720);
+        using DAW synth = new(1280, 720);
         synth.Run();
     }
 }
