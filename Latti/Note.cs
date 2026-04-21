@@ -2,20 +2,20 @@ namespace Latti;
 
 public class Note
 {
-    public List<Fraction> StartIntervals = [];
-    public List<Fraction> EndIntervals = [];
-    public float Velocity;
-
     public double StartTime;
     public double EndTime;
+    public List<Rational> StartIntervals = [];
+    public List<Rational> EndIntervals = [];
+    public float Velocity = 0.75f;
 
-    public float GetFrequency(float rootFrequency, double time)
+    public float GetFrequency(float rootFrequency, double t)
     {
-        float t = (float)((time - StartTime) / (EndTime - StartTime));
+        float tNorm = (float)((t - StartTime) / (EndTime - StartTime));
+        tNorm = Math.Clamp(tNorm, 0f, 1f);
 
-        float startInterval = StartIntervals.Aggregate(1f, (acc, frac) => acc * frac.Value);
-        float endInterval = EndIntervals.Aggregate(1f, (acc, frac) => acc * frac.Value);
-        float currInterval = MathF.Pow(2, MathF.Log(startInterval) * (1f - t) + MathF.Log(endInterval) * t);
-        return rootFrequency * currInterval;
+        float startFreq = rootFrequency * StartIntervals.Aggregate(1f, (acc, r) => acc * r.Value);
+        float endFreq = rootFrequency * EndIntervals.Aggregate(1f, (acc, r) => acc * r.Value);
+
+        return startFreq * MathF.Pow(endFreq / startFreq, tNorm);
     }
 }

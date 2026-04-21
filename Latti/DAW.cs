@@ -16,6 +16,7 @@ public class DAW : GameWindow
     bool playing = false;
 
     readonly Synth Synth;
+    readonly SynthUI SynthUI;
     float gain = 0.5f;
 
     const int BufferSize = 1024;
@@ -33,6 +34,7 @@ public class DAW : GameWindow
         UpdateFrequency = 60.0;
 
         Synth = new();
+        SynthUI = new(Synth);
 
         UpdateFrame += e => ImGuiController.Update(this, (float)e.Time);
     }
@@ -81,7 +83,7 @@ public class DAW : GameWindow
 
         GL.Clear(ClearBufferMask.ColorBufferBit);
 
-        Synth.DrawGUI();
+        SynthUI.DrawUI();
         DrawControlGUI();
 
         ImGuiController.Render();

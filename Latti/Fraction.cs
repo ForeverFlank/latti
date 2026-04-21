@@ -1,13 +1,13 @@
 namespace Latti;
 
-public struct Fraction
+public struct Rational
 {
     public int Numerator;
     public int Denominator;
 
     public readonly float Value => ((float)Numerator) / Denominator;
 
-    public Fraction(int numerator = 1, int denominator = 1)
+    public Rational(int numerator = 1, int denominator = 1)
     {
         Numerator = numerator;
         Denominator = denominator;
