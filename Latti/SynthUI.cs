@@ -64,6 +64,12 @@ public class SynthUI
 
         ImGui.InputFloat("Root frequency", ref _synth.RootFrequency);
 
+        ImGui.Separator();
+
+        ImGui.InputFloat("BPM", ref _synth.Tempo.Bpm);
+
+        ImGui.Separator();
+
         ImGui.Text("Zoom");
         ImGui.SliderFloat("Horizontal", ref _zoomX, 0.1f, 10f, "%.3f", ImGuiSliderFlags.Logarithmic);
         ImGui.SliderFloat("Vertical", ref _zoomY, 0.01f, 1f, "%.3f", ImGuiSliderFlags.Logarithmic);
@@ -71,14 +77,12 @@ public class SynthUI
         ImGui.SliderFloat("Pan Y", ref _viewY, 0f, 8f);
 
         if (ImGui.Button("+ Add note"))
+        {
             _synth.Notes.Add(new Note
             {
-                StartBeat = 0,
-                EndBeat = 1,
-                StartIntervals = [new Rational(1, 1)],
-                EndIntervals = [new Rational(1, 1)],
                 Velocity = 0.75f
             });
+        }
 
         DrawNoteEditor();
 
@@ -98,9 +102,22 @@ public class SynthUI
         ImGui.PushClipRect(_pMin, _pMax, true);
         foreach (Note note in _synth.Notes)
         {
-            DrawNote(note, dl);
+            DrawNoteCurve(note, dl);
         }
         ImGui.PopClipRect();
+
+        foreach (Note note in _synth.Notes)
+        {
+            bool isSelected = _selectedNote?.Note == note;
+            if (isSelected)
+            {
+                DrawPitchPoints(note, dl);
+            }
+            else
+            {
+                DrawStartPoint(note, dl);
+            }
+        }
 
         if (!_dragging && _pendingSelectedNote is not null)
         {
@@ -111,23 +128,12 @@ public class SynthUI
 
         if (ImGui.BeginPopup("NotePopup") && _selectedNote is not null)
         {
-            ImGui.Text($"Editing {_selectedNote.Type} endpoint");
+            ImGui.Text($"Editing note pitch point {_selectedNote.PitchIndex}");
             ImGui.Separator();
 
-            if (ImGui.InputText("Start intervals", ref _selectedNote.StartIntervals, 64))
+            if (ImGui.InputText("Intervals", ref _selectedNote.IntervalsText, 64))
             {
-                _selectedNote.ApplyStartIntervals();
-            }
-
-            if (ImGui.InputText("End intervals", ref _selectedNote.EndIntervals, 64))
-            {
-                _selectedNote.ApplyEndIntervals();
-            }
-
-            if (ImGui.Button("- Remove"))
-            {
-                _pendingDelete = _selectedNote.Note;
-                ImGui.CloseCurrentPopup();
+                _selectedNote.ApplyIntervals();
             }
 
             ImGui.EndPopup();
@@ -139,121 +145,140 @@ public class SynthUI
         {
             _synth.Notes.Remove(_pendingDelete);
 
-            if (_selectedNote?.Note == _pendingDelete)
-                _selectedNote = null;
-
-            if (_dragTarget?.Note == _pendingDelete)
-                _dragTarget = null;
+            if (_selectedNote?.Note == _pendingDelete) _selectedNote = null;
+            if (_dragTarget?.Note == _pendingDelete) _dragTarget = null;
 
             _pendingDelete = null;
         }
     }
 
-    void DrawNote(Note note, ImDrawListPtr dl)
+    Vector2 BeatToScreen(Note note, double beat)
+    {
+        float freq = note.GetFrequency(_synth.RootFrequency, beat);
+        float time = (float)_synth.Tempo.BeatsToSeconds(beat);
+        return TimeToScreen(time, MathF.Log2(freq));
+    }
+
+    void DrawNoteCurve(Note note, ImDrawListPtr dl)
     {
         const int segments = 64;
 
         Vector2[] points = Enumerable.Range(0, segments).Select(i =>
-            {
-                double t = i / (segments - 1.0);
-
-                double time = note.StartSeconds(_synth.Tempo) + t * note.DurationSeconds(_synth.Tempo);
-                float freq = note.GetFrequency(_synth.RootFrequency, time);
-                float y = MathF.Log2(freq);
-
-                return TimeToScreen((float)time, y);
-            }).ToArray();
+        {
+            double t = i / (segments - 1.0);
+            double beat = note.StartBeat + t * note.DurationBeats;
+            return BeatToScreen(note, beat);
+        }).ToArray();
 
         dl.AddPolyline(ref points[0], points.Length, ImGui.GetColorU32(new Vector4(1f)), ImDrawFlags.None, 1.0f);
-
-        if (IsOnScreen(points[0])) DrawEndpoint(note, SelectType.Start, points[0], dl);
-        if (IsOnScreen(points[^1])) DrawEndpoint(note, SelectType.End, points[^1], dl);
     }
 
-    void DrawEndpoint(Note note, SelectType which, Vector2 center, ImDrawListPtr dl)
+    void DrawStartPoint(Note note, ImDrawListPtr dl)
     {
-        const float size = 10f;
+        Vector2 pos = BeatToScreen(note, note.StartBeat);
+        if (!IsOnScreen(pos)) return;
 
+        DrawDiamond(pos, 10f, ImGui.GetColorU32(new Vector4(1f)), dl);
+        HandlePointInteraction(note, 0, pos, 10f, canDelete: true);
+    }
+
+    void DrawPitchPoints(Note note, ImDrawListPtr dl)
+    {
+        for (int i = 0; i < note.PitchBeats.Count; i++)
+        {
+            Vector2 pos = BeatToScreen(note, note.StartBeat + note.PitchBeats[i]);
+            if (!IsOnScreen(pos)) continue;
+
+            bool isFirst = i == 0;
+            uint color = ImGui.GetColorU32(isFirst ? new Vector4(1f) : new Vector4(0.6f, 0.9f, 1f, 1f));
+            DrawDiamond(pos, 8f, color, dl);
+            HandlePointInteraction(note, i, pos, 8f, canDelete: isFirst);
+        }
+    }
+
+    static void DrawDiamond(Vector2 center, float size, uint color, ImDrawListPtr dl)
+    {
         dl.AddQuad(
             new Vector2(center.X, center.Y - size),
             new Vector2(center.X + size, center.Y),
             new Vector2(center.X, center.Y + size),
             new Vector2(center.X - size, center.Y),
-            ImGui.GetColorU32(new Vector4(1f))
+            color
         );
+    }
 
+    void HandlePointInteraction(Note note, int pitchIndex, Vector2 center, float size, bool canDelete)
+    {
         ImGui.SetCursorScreenPos(center - new Vector2(size, size));
-
-        bool hovered = ImGui.InvisibleButton(
-            $"ep_{which}_{note.GetHashCode()}",
-            new Vector2(size * 2)
-        );
+        ImGui.InvisibleButton($"ep_{pitchIndex}_{note.GetHashCode()}", new Vector2(size * 2));
 
         Vector2 mouse = ImGui.GetIO().MousePos;
 
-        // START DRAG
         if (ImGui.IsItemActivated())
         {
             _dragging = true;
-            _dragTarget = new(note, which);
+            _dragTarget = new(note, pitchIndex);
             _dragStartMouse = mouse;
             _dragMoved = false;
         }
 
-        // DETECT MOVEMENT
-        if (_dragging && Vector2.Distance(mouse, _dragStartMouse) > 3f)
-        {
-            _dragMoved = true;
-        }
+        if (_dragging && Vector2.Distance(mouse, _dragStartMouse) > 3f) _dragMoved = true;
 
-        // CLICK VS DRAG RESOLUTION ON RELEASE
         if (ImGui.IsItemDeactivated())
         {
-            if (!_dragMoved)
-            {
-                _pendingSelectedNote = new(note, which);
-            }
-
+            if (!_dragMoved) _pendingSelectedNote = new(note, pitchIndex);
             _dragging = false;
             _dragTarget = null;
+        }
+
+        if (canDelete && ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
+        {
+            _pendingDelete = note;
         }
     }
 
     void HandleDragging()
     {
-        if (_dragging && _dragTarget != null)
+        if (!_dragging || _dragTarget == null) return;
+
+        if (!ImGui.IsMouseDown(ImGuiMouseButton.Left))
         {
-            if (!ImGui.IsMouseDown(ImGuiMouseButton.Left))
+            _dragging = false;
+            _dragTarget = null;
+            return;
+        }
+
+        Vector2 mouse = ImGui.GetIO().MousePos;
+        double beat = SnapBeat(ScreenToBeat(mouse.X));
+
+        Note note = _dragTarget.Note;
+        int idx = _dragTarget.PitchIndex;
+
+        if (idx == 0)
+        {
+            double delta = beat - note.StartBeat;
+            for (int i = 0; i < note.PitchBeats.Count; i++)
             {
-                _dragging = false;
-                _dragTarget = null;
-                return;
+                note.PitchBeats[i] += delta;
             }
-
-            Vector2 mouse = ImGui.GetIO().MousePos;
-
-            double time = ScreenToTime(mouse.X);
-
-            double beat = time * _synth.Tempo.Bpm / 60.0;
-            double snappedBeat = SnapBeat(beat);
-
-            Note note = _dragTarget.Note;
-
-            if (_dragTarget.Type == SelectType.Start)
-            {
-                note.StartBeat = Math.Min(snappedBeat, note.EndBeat - 0.01);
-            }
-            else
-            {
-                note.EndBeat = Math.Max(snappedBeat, note.StartBeat + 0.01);
-            }
+        }
+        else if (idx == note.PitchBeats.Count - 1)
+        {
+            double minEnd = note.StartBeat + note.PitchBeats[^2] + 0.01;
+            note.PitchBeats[^1] = Math.Max(beat - note.StartBeat, minEnd - note.StartBeat);
+        }
+        else
+        {
+            double localBeat = beat - note.StartBeat;
+            double prev = note.PitchBeats[idx - 1];
+            double next = note.PitchBeats[idx + 1];
+            note.PitchBeats[idx] = Math.Clamp(localBeat, prev + 0.01, next - 0.01);
         }
     }
 
     static string SerializeIntervals(List<Rational> intervals)
     {
         if (intervals.Count == 0) return "";
-
         return string.Join(" * ", intervals.Select(r => $"{r.Numerator}/{r.Denominator}"));
     }
 
@@ -265,18 +290,16 @@ public class SynthUI
 
         try
         {
-            var parts = input.Split('*');
-            var result = new List<Rational>();
+            string[] parts = input.Split('*');
+            List<Rational> result = [];
 
             foreach (string part in parts)
             {
-                var trimmed = part.Trim();
-                if (string.IsNullOrEmpty(trimmed))
-                    continue;
+                string trimmed = part.Trim();
+                if (string.IsNullOrEmpty(trimmed)) continue;
 
-                var fracParts = trimmed.Split('/');
-                if (fracParts.Length != 2)
-                    continue;
+                string[] fracParts = trimmed.Split('/');
+                if (fracParts.Length != 2) continue;
 
                 if (int.TryParse(fracParts[0].Trim(), out int n) &&
                     int.TryParse(fracParts[1].Trim(), out int d) &&
@@ -296,51 +319,41 @@ public class SynthUI
 
     static double SnapBeat(double beat)
     {
-        const double snap = 1 / 4f;
+        const double snap = 1 / 4.0;
         return Math.Round(beat / snap) * snap;
     }
-
 
     Vector2 TimeToScreen(float t, float y) => new(
         _pMin.X + (t - _viewX) * _zoomX * _canvasSize.X,
         _pMax.Y - (y - _viewY) * _zoomY * _canvasSize.Y
     );
 
-    float ScreenToTime(float x) =>
-        (x - _pMin.X) / (_zoomX * _canvasSize.X) + _viewX;
+    double ScreenToBeat(float x)
+    {
+        float time = (x - _pMin.X) / (_zoomX * _canvasSize.X) + _viewX;
+        return _synth.Tempo.SecondsToBeats(time);
+    }
 
     bool IsOnScreen(Vector2 p) =>
         p.X >= _pMin.X && p.X <= _pMax.X &&
         p.Y >= _pMin.Y && p.Y <= _pMax.Y;
 
-
     class SelectedNote
     {
         public Note Note;
-        public SelectType Type;
-        public string StartIntervals;
-        public string EndIntervals;
+        public int PitchIndex;
+        public string IntervalsText;
 
-        public SelectedNote(Note note, SelectType type)
+        public SelectedNote(Note note, int pitchIndex)
         {
             Note = note;
-            Type = type;
-            StartIntervals = SerializeIntervals(note.StartIntervals);
-            EndIntervals = SerializeIntervals(note.EndIntervals);
+            PitchIndex = pitchIndex;
+            IntervalsText = SerializeIntervals(note.PitchIntervals[pitchIndex]);
         }
 
-        public void ApplyStartIntervals()
+        public void ApplyIntervals()
         {
-            Note.StartIntervals.Clear();
-            Note.StartIntervals.AddRange(DeserializeIntervals(StartIntervals));
-        }
-
-        public void ApplyEndIntervals()
-        {
-            Note.EndIntervals.Clear();
-            Note.EndIntervals.AddRange(DeserializeIntervals(EndIntervals));
+            Note.PitchIntervals[PitchIndex] = DeserializeIntervals(IntervalsText);
         }
     }
-
-    enum SelectType { Start, End }
 }

@@ -2,24 +2,14 @@ namespace Latti;
 
 public class Note
 {
-    private double _startBeat;
-    private double _endBeat;
-    private float _velocity;
+    public List<double> PitchBeats = [0.0, 1.0];
+    public List<List<Rational>> PitchIntervals = [[new(1, 1)], [new(1, 1)]];
 
-    public double StartBeat
-    {
-        get => _startBeat;
-        set => _startBeat = Math.Max(value, 0);
-    }
-    public double EndBeat
-    {
-        get => _endBeat;
-        set => _endBeat = Math.Max(_startBeat, value);
-    }
+    public double StartBeat => PitchBeats[0];
+    public double EndBeat => PitchBeats[^1];
     public double DurationBeats => EndBeat - StartBeat;
 
-    public List<Rational> StartIntervals = [];
-    public List<Rational> EndIntervals = [];
+    private float _velocity;
     public float Velocity
     {
         get => _velocity;
@@ -36,19 +26,32 @@ public class Note
     public bool IsActiveAtBeat(double beat) => beat >= StartBeat && beat < EndBeat;
     public bool IsActiveAtSecond(double t, TempoMap tempo) => IsActiveAtBeat(tempo.SecondsToBeats(t));
 
+    float IntervalsToFrequency(float rootFrequency, List<Rational> intervals) =>
+        rootFrequency * intervals.Aggregate(1f, (acc, r) => acc * r.Value);
+
     public float GetFrequency(float rootFrequency, double beat)
     {
-        float tNorm = (float)((beat - StartBeat) / DurationBeats);
-        tNorm = Math.Clamp(tNorm, 0f, 1f);
+        if (PitchBeats.Count == 0) return rootFrequency;
 
-        float startFreq = rootFrequency * StartIntervals.Aggregate(1f, (acc, r) => acc * r.Value);
-        float endFreq = rootFrequency * EndIntervals.Aggregate(1f, (acc, r) => acc * r.Value);
+        if (beat <= PitchBeats[0]) return IntervalsToFrequency(rootFrequency, PitchIntervals[0]);
+        if (beat >= PitchBeats[^1]) return IntervalsToFrequency(rootFrequency, PitchIntervals[^1]);
 
-        return startFreq * MathF.Pow(endFreq / startFreq, tNorm);
-    }
+        for (int i = 0; i < PitchBeats.Count - 1; i++)
+        {
+            double b0 = PitchBeats[i];
+            double b1 = PitchBeats[i + 1];
 
-    public float GetFrequencyAtSecond(float rootFrequency, double t, TempoMap tempo)
-    {
-        return GetFrequency(rootFrequency, tempo.SecondsToBeats(t));
+            if (beat <= b1)
+            {
+                double t = (b1 > b0) ? (beat - b0) / (b1 - b0) : 0.0;
+
+                float f0 = IntervalsToFrequency(rootFrequency, PitchIntervals[i]);
+                float f1 = IntervalsToFrequency(rootFrequency, PitchIntervals[i + 1]);
+
+                return f0 * MathF.Pow(f1 / f0, (float)t);
+            }
+        }
+
+        return IntervalsToFrequency(rootFrequency, PitchIntervals[^1]);
     }
 }

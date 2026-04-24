@@ -255,7 +255,7 @@ void main()
         io.MouseDown[3] = MouseState[MouseButton.Button4];
         io.MouseDown[4] = MouseState[MouseButton.Button5];
 
-        var screenPoint = new Vector2i((int)MouseState.X, (int)MouseState.Y);
+        Vector2i screenPoint = new Vector2i((int)MouseState.X, (int)MouseState.Y);
         var point = screenPoint;//wnd.PointToClient(screenPoint);
         io.MousePos = new System.Numerics.Vector2(point.X, point.Y);
 
@@ -268,7 +268,7 @@ void main()
             io.AddKeyEvent(TranslateKey(key), KeyboardState.IsKeyDown(key));
         }
 
-        foreach (var c in PressedChars)
+        foreach (char c in PressedChars)
         {
             io.AddInputCharacter(c);
         }
