@@ -4,10 +4,8 @@ namespace Latti;
 
 class NoteEditorViewport
 {
-    public float ZoomX = 1.0f;
-    public float ZoomY = 0.1f;
-    public float ViewX = 0.0f;
-    public float ViewY = 0.0f;
+    public Vector2 Zoom = new(1.0f, 0.25f);
+    public Vector2 View = new(0.0f, 6.0f);
 
     public Vector2 PMin { get; private set; }
     public Vector2 PMax { get; private set; }
@@ -21,11 +19,11 @@ class NoteEditorViewport
     }
 
     public Vector2 TimeToScreen(float t, float y) => new(
-        PMin.X + (t - ViewX) * ZoomX * CanvasSize.X,
-        PMax.Y - (y - ViewY) * ZoomY * CanvasSize.Y
+        PMin.X + (t - View.X) * Zoom.X * CanvasSize.X,
+        PMax.Y - (y - View.Y) * Zoom.Y * CanvasSize.Y
     );
 
-    public Vector2 BeatToScreen(Note note, double beat, float rootFrequency, Tempo tempo)
+    public Vector2 NoteToScreen(Note note, double beat, float rootFrequency, Tempo tempo)
     {
         float freq = note.GetFrequency(rootFrequency, beat);
         float time = (float)tempo.BeatsToSeconds(beat);
@@ -34,7 +32,7 @@ class NoteEditorViewport
 
     public double ScreenToBeat(float x, Tempo tempo)
     {
-        float time = (x - PMin.X) / (ZoomX * CanvasSize.X) + ViewX;
+        float time = (x - PMin.X) / (Zoom.X * CanvasSize.X) + View.X;
         return tempo.SecondsToBeats(time);
     }
 

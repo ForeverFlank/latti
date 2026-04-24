@@ -4,18 +4,21 @@ class SelectedNote
 {
     public Note Note;
     public int PitchIndex;
-    public string IntervalsText;
+    public string[] IntervalsText;
 
     public SelectedNote(Note note, int pitchIndex)
     {
         Note = note;
         PitchIndex = pitchIndex;
-        IntervalsText = IntervalSerializer.Serialize(note.PitchIntervals[pitchIndex]);
+        IntervalsText = note.PitchIntervals
+                            .Select(IntervalSerializer.Serialize)
+                            .ToArray();
     }
 
     public void ApplyIntervals()
     {
-        Note.PitchIntervals[PitchIndex] = IntervalSerializer.Deserialize(IntervalsText);
+        Note.PitchIntervals = IntervalsText.Select(IntervalSerializer.Deserialize)
+                                           .ToList();
     }
 }
 

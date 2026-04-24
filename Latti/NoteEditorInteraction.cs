@@ -70,7 +70,7 @@ class NoteEditorInteraction
         {
             double localBeat = beat - note.StartBeat;
             double prev = note.PitchBeats[idx - 1];
-            double clamped = Math.Max(localBeat, prev + 0.01);
+            double clamped = Math.Max(localBeat, prev);
             double delta = clamped - note.PitchBeats[idx];
 
             for (int i = idx; i < note.PitchBeats.Count; i++) note.PitchBeats[i] += delta;
