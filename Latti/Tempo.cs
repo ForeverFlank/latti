@@ -1,6 +1,6 @@
 namespace Latti;
 
-public class TempoMap
+public class Tempo
 {
     public TimeSignature TimeSignature = new(4f, 4f);
     public float Bpm = 120f;
@@ -15,7 +15,7 @@ public class TempoMap
     public double BarsToBeats(double bars) => bars * BeatsPerBar;
     public double BeatsToBar(double beats) => beats / BeatsPerBar;
 
-    public TempoMap(TimeSignature timeSignature, float bpm)
+    public Tempo(TimeSignature timeSignature, float bpm)
     {
         TimeSignature = timeSignature;
         Bpm = bpm;

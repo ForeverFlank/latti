@@ -16,15 +16,15 @@ public class Note
         set => _velocity = Math.Clamp(value, 0f, 1f);
     }
 
-    public double StartSeconds(TempoMap tempo) => tempo.BeatsToSeconds(StartBeat);
-    public double EndSeconds(TempoMap tempo) => tempo.BeatsToSeconds(EndBeat);
-    public double DurationSeconds(TempoMap tempo) => tempo.BeatsToSeconds(DurationBeats);
+    public double StartSeconds(Tempo tempo) => tempo.BeatsToSeconds(StartBeat);
+    public double EndSeconds(Tempo tempo) => tempo.BeatsToSeconds(EndBeat);
+    public double DurationSeconds(Tempo tempo) => tempo.BeatsToSeconds(DurationBeats);
 
-    public double StartBar(TempoMap tempo) => tempo.BeatsToBar(StartBeat);
-    public double EndBar(TempoMap tempo) => tempo.BeatsToBar(EndBeat);
+    public double StartBar(Tempo tempo) => tempo.BeatsToBar(StartBeat);
+    public double EndBar(Tempo tempo) => tempo.BeatsToBar(EndBeat);
 
     public bool IsActiveAtBeat(double beat) => beat >= StartBeat && beat < EndBeat;
-    public bool IsActiveAtSecond(double t, TempoMap tempo) => IsActiveAtBeat(tempo.SecondsToBeats(t));
+    public bool IsActiveAtSecond(double t, Tempo tempo) => IsActiveAtBeat(tempo.SecondsToBeats(t));
 
     float IntervalsToFrequency(float rootFrequency, List<Rational> intervals) =>
         rootFrequency * intervals.Aggregate(1f, (acc, r) => acc * r.Value);

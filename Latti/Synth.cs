@@ -3,7 +3,7 @@ namespace Latti;
 public class Synth
 {
     public float RootFrequency = 256f;
-    public TempoMap Tempo = new(new(4f, 4f), 120f);
+    public Tempo Tempo = new(new(4f, 4f), 120f);
 
     public readonly List<Note> Notes = [];
 
